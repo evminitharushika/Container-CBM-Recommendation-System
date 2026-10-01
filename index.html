@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#102a43">
+  <title>Container CBM Recommendation System</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <span class="eyebrow">LOGISTICS TOOL</span>
+      <h1>Container CBM Recommendation</h1>
+      <p>Upload your Excel file and find the most suitable container automatically.</p>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="card upload-card">
+      <h2>1. Upload Excel File</h2>
+      <p class="muted">Upload an Excel packing list. Existing Excel CBM values are used directly; dimension calculation is used only when CBM is not provided.</p>
+
+      <label class="file-box" for="excelFile">
+        <span class="file-icon">📊</span>
+        <strong>Choose Excel File</strong>
+        <span id="fileName">.xlsx / .xls</span>
+      </label>
+      <input id="excelFile" type="file" accept=".xlsx,.xls,.csv">
+
+      <div class="demo-row">
+        <button id="loadDemo" class="secondary-btn">Load Demo Data</button>
+        <button id="clearData" class="clear-btn" type="button">Clear Data</button>
+        <span>Use this to test the system without an Excel file.</span>
+      </div>
+    </section>
+
+    <section id="detectionPanel" class="card detection-card" hidden>
+      <div class="section-head">
+        <div>
+          <h2>Detected Excel Data</h2>
+          <p class="muted">The system scans every sheet and finds the most likely data table.</p>
+        </div>
+        <span id="detectionStatus" class="badge">Automatic detection</span>
+      </div>
+
+      <div class="detection-grid">
+        <div class="detection-item">
+          <span>Sheet</span>
+          <strong id="detectedSheet">—</strong>
+        </div>
+        <div class="detection-item">
+          <span>Header row</span>
+          <strong id="detectedHeaderRow">—</strong>
+        </div>
+        <div class="detection-item">
+          <span>CBM formula</span>
+          <strong id="detectedCbmColumn">—</strong>
+        </div>
+        <div class="detection-item">
+          <span>Quantity column</span>
+          <strong id="detectedQuantityColumn">—</strong>
+        </div>
+        <div class="detection-item">
+          <span>Valid records</span>
+          <strong id="detectedRecordCount">0</strong>
+        </div>
+      </div>
+
+      <div id="selectionControls" class="selection-controls" hidden>
+        <label>
+          <span>Data sheet</span>
+          <select id="sheetSelect"></select>
+        </label>
+        <label>
+          <span>CBM column / table</span>
+          <select id="cbmSelect"></select>
+        </label>
+        <p id="selectionHint" class="muted">Multiple possible data sources were found. Choose the correct one.</p>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="section-head">
+        <div>
+          <h2>Calculation Details</h2>
+          <p class="muted">Type Length, Width and Height with decimal points (example: 34.5). CBM = (L × W × H × No. of Ctns) ÷ 1,000,000 when the Excel file has no CBM column.</p>
+        </div>
+        <span id="statusBadge" class="badge">Waiting for file</span>
+      </div>
+
+      <div class="dimension-bar">
+        <p class="muted">You can type values such as 34.5 in these fields, then fill the table.</p>
+        <div class="dimension-fields">
+          <label>
+            <span>Length (cm)</span>
+            <input id="defaultLength" type="text" inputmode="decimal" autocomplete="off" placeholder="34.5">
+          </label>
+          <label>
+            <span>Width (cm)</span>
+            <input id="defaultWidth" type="text" inputmode="decimal" autocomplete="off" placeholder="34.5">
+          </label>
+          <label>
+            <span>Height (cm)</span>
+            <input id="defaultHeight" type="text" inputmode="decimal" autocomplete="off" placeholder="23.5">
+          </label>
+          <button id="applyDimensionsEmpty" class="secondary-btn" type="button">Fill empty rows</button>
+          <button id="applyDimensionsAll" class="clear-btn" type="button">Apply to all rows</button>
+        </div>
+      </div>
+
+      <div class="table-wrap">
+        <table id="dataTable">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Pack / Item</th>
+              <th>Length (cm)</th>
+              <th>Width (cm)</th>
+              <th>Height (cm)</th>
+              <th>No. of Ctns</th>
+              <th>Packet Qty</th>
+              <th>Unit CBM</th>
+              <th>Total CBM</th>
+            </tr>
+          </thead>
+          <tbody id="dataBody">
+            <tr><td colspan="9" class="empty">Upload an Excel file to display pack data.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="stats">
+      <div class="stat-card">
+        <span>Total Packs</span>
+        <strong id="packCount">0</strong>
+      </div>
+      <div class="stat-card">
+        <span>Total Packet Quantity</span>
+        <strong id="packetQuantityTotal">0</strong>
+      </div>
+      <div class="stat-card">
+        <span>Total CBM</span>
+        <strong id="totalCbm">0.0000 CBM</strong>
+      </div>
+      <div class="stat-card">
+        <span>Recommended Container</span>
+        <strong id="recommendedSmall">—</strong>
+      </div>
+    </section>
+
+    <section class="card result-card">
+      <div class="section-head">
+        <h2>3. Container Recommendation</h2>
+        <button id="downloadPdf" class="secondary-btn" type="button">Download PDF Report</button>
+      </div>
+      <div id="recommendation" class="recommendation empty-result">
+        Upload your Excel data to get a recommendation.
+      </div>
+
+      <div class="container-grid">
+        <div class="container-option" data-container="20FT">
+          <h3>20 FT</h3>
+          <p>Approx. capacity</p>
+          <strong>33 CBM</strong>
+          <span id="use20">—</span>
+        </div>
+        <div class="container-option" data-container="40FT">
+          <h3>40 FT</h3>
+          <p>Approx. capacity</p>
+          <strong>67 CBM</strong>
+          <span id="use40">—</span>
+        </div>
+        <div class="container-option" data-container="40HC">
+          <h3>40 FT High Cube</h3>
+          <p>Approx. capacity</p>
+          <strong>76 CBM</strong>
+          <span id="use40hc">—</span>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <footer>
+    Container CBM Recommendation System
+  </footer>
+
+  <!-- SheetJS is used to read Excel files in the browser. -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@4.2.1/dist/jspdf.umd.min.js"></script>
+  <script src="app.js?v=12"></script>
+</body>
+</html>
