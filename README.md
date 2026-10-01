@@ -2,7 +2,7 @@
 
 ## Purpose
 A simple web system that:
-1. Uploads an Excel/CSV file.
+1. Uploads an Excel file.
 2. Reads pack/box CBM values.
 3. Calculates total CBM automatically.
 4. Compares total CBM with standard container capacities.
