@@ -684,11 +684,9 @@ async function downloadPdf() {
     return;
   }
 
-  const candidate = state.candidates[state.selectedIndex];
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ unit: "mm", format: "a4", orientation: "landscape" });
   const rows = state.rows;
-  const uploadedFileName = fileName.textContent || "Uploaded Excel file";
   const cartonTotal = rows.reduce((sum, row) => sum + numberValue(row.quantity), 0);
   const total = roundTo(rows.reduce((sum, row) => sum + row.totalCbm, 0), 4);
   const packetTotal = rows.reduce((sum, row) => sum + numberValue(row.packetQuantity), 0);
@@ -718,16 +716,6 @@ async function downloadPdf() {
   doc.setFont("helvetica", "normal");
   doc.text(`Report Date: ${reportDate}`, pageWidth - 14, 12, { align: "right" });
 
-  doc.setTextColor(31, 41, 55);
-  doc.setFontSize(10);
-  doc.setFont("helvetica", "bold");
-  doc.text(`Sheet: ${candidate ? candidate.sheetName : "-"}`, 16, y);
-  doc.setFont("helvetica", "normal");
-  doc.text(`Excel file: ${uploadedFileName}`, 16, y + 6);
-  doc.text(`Header row: ${candidate ? candidate.headerRow : "-"}`, 16, y + 12);
-  doc.text(`CBM source: ${candidate && candidate.cbmColumnIndex !== -1 ? "Excel calculated value" : "Dimensions and cartons"}`, 16, y + 18);
-
-  y += 13;
   doc.setTextColor(16, 42, 67);
   doc.setFontSize(10);
   doc.setFont("helvetica", "bold");
