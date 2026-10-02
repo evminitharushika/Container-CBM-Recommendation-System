@@ -28,6 +28,7 @@ const cbmSelect = document.getElementById("cbmSelect");
 const defaultLength = document.getElementById("defaultLength");
 const defaultWidth = document.getElementById("defaultWidth");
 const defaultHeight = document.getElementById("defaultHeight");
+const freelanLogo = document.getElementById("freelanLogo");
 
 const state = {
   candidates: [],
@@ -41,7 +42,7 @@ cbmSelect.addEventListener("change", event => selectCandidate(Number(event.targe
 document.getElementById("clearData").addEventListener("click", clearData);
 document.getElementById("applyDimensionsEmpty").addEventListener("click", () => applyDefaultDimensions(false));
 document.getElementById("applyDimensionsAll").addEventListener("click", () => applyDefaultDimensions(true));
-document.getElementById("downloadPdf").addEventListener("click", downloadPdf);
+document.getElementById("downloadPdf").addEventListener("click", () => downloadPdf());
 
 document.getElementById("loadDemo").addEventListener("click", () => {
   const demoCandidate = createDemoCandidate();
@@ -129,6 +130,7 @@ function detectCandidates(workbook) {
           packetsPerBoxColumnIndex: headerInfo.packetsPerBoxIndex,
           netWeightColumnIndex: headerInfo.netWeightIndex,
           grossWeightColumnIndex: headerInfo.grossWeightIndex,
+          batchIndex: headerInfo.batchIndex,
           descriptionColumnIndex: headerInfo.descriptionIndex,
           lengthColumnIndex: headerInfo.lengthIndex,
           widthColumnIndex: headerInfo.widthIndex,
@@ -158,6 +160,7 @@ function inspectHeader(row) {
   let packetsPerBoxIndex = -1;
   let netWeightIndex = -1;
   let grossWeightIndex = -1;
+  let batchIndex = -1;
   let descriptionIndex = -1;
   let descriptionScore = -1;
   let lengthIndex = -1;
@@ -182,6 +185,7 @@ function inspectHeader(row) {
     if (packetsPerBoxIndex === -1 && isPacketsPerBoxHeader(header)) packetsPerBoxIndex = index;
     if (netWeightIndex === -1 && isNetWeightHeader(header)) netWeightIndex = index;
     if (grossWeightIndex === -1 && isGrossWeightHeader(header)) grossWeightIndex = index;
+    if (batchIndex === -1 && isBatchHeader(header)) batchIndex = index;
     if (lengthIndex === -1 && isLengthHeader(header)) lengthIndex = index;
     if (widthIndex === -1 && isWidthHeader(header)) widthIndex = index;
     if (heightIndex === -1 && isHeightHeader(header)) heightIndex = index;
@@ -200,6 +204,7 @@ function inspectHeader(row) {
     packetsPerBoxIndex,
     netWeightIndex,
     grossWeightIndex,
+    batchIndex,
     descriptionIndex,
     lengthIndex,
     widthIndex,
@@ -269,6 +274,11 @@ function isNetWeightHeader(value) {
 function isGrossWeightHeader(value) {
   const header = normalize(value);
   return header.includes("grossweight") || header === "grosswt" || header === "gw" || header === "gwt" || header.includes("grosswt");
+}
+
+function isBatchHeader(value) {
+  const header = normalize(value);
+  return header.includes("batch") || header.includes("lotno") || header === "lot";
 }
 
 function isLengthHeader(value) {
@@ -424,6 +434,8 @@ function extractRows(candidate) {
     const height = candidate.heightColumnIndex === -1 ? 0 : numberValue(row[candidate.heightColumnIndex]);
     const packetsPerBox = candidate.packetsPerBoxColumnIndex === -1 ? 0 : numberValue(row[candidate.packetsPerBoxColumnIndex]);
     const sourcePacketQuantity = candidate.packetQuantityColumnIndex === -1 ? 0 : numberValue(row[candidate.packetQuantityColumnIndex]);
+    const weight = candidate.netWeightColumnIndex === -1 ? 0 : numberValue(row[candidate.netWeightColumnIndex]);
+    const batchNo = candidate.batchIndex === -1 ? "" : String(row[candidate.batchIndex] ?? "").trim();
 
     const hasItemText = Boolean(description) && !/^pack\s+\d+$/i.test(description);
     const excelCbm = candidate.cbmColumnIndex === -1 ? 0 : numberValue(row[candidate.cbmColumnIndex]);
@@ -445,6 +457,8 @@ function extractRows(candidate) {
       length,
       width,
       height,
+      weight,
+      batchNo,
       unitCbm,
       cbmValue: totalCbm,
       usesExcelCbm: excelCbm > 0,
@@ -644,15 +658,17 @@ function calculateRecommendation(rows) {
   recommendation.innerHTML = `
     <h3>Recommended Container: ${suitable.name}</h3>
     <p>${usesExcelCbm ? "CBM source: <strong>Excel calculated/result values</strong>" : "Formula: <strong>CBM = (Length × Width × Height × No. of Ctns) ÷ 1,000,000</strong>"}</p>
-    <p>Total CBM: <strong>${formatCbm(total)} CBM</strong></p>
-    <p>Container capacity: <strong>${formatCbm(suitable.capacity)} CBM</strong></p>
-    <p>Remaining capacity: <strong>${formatCbm(remaining)} CBM</strong></p>
-    <p>Utilization: <strong>${(total / suitable.capacity * 100).toFixed(1)}%</strong></p>
+    <div class="recommendation-metrics">
+      <div class="recommendation-metric total"><span>Total CBM</span><strong>${formatCbm(total)} CBM</strong></div>
+      <div class="recommendation-metric capacity"><span>Capacity</span><strong>${formatCbm(suitable.capacity)} CBM</strong></div>
+      <div class="recommendation-metric remaining"><span>Remaining</span><strong>${formatCbm(remaining)} CBM</strong></div>
+      <div class="recommendation-metric utilization"><span>Utilization</span><strong>${(total / suitable.capacity * 100).toFixed(1)}%</strong></div>
+    </div>
     ${missingDimensions ? `<p>${missingDimensions} row(s) still need Length, Width, Height or carton quantity.</p>` : ""}
   `;
 }
 
-function downloadPdf() {
+async function downloadPdf() {
   if (!state.rows.length) {
     setStatus("Load data before downloading PDF", "#fff6e8", "#9a6700");
     return;
@@ -663,9 +679,14 @@ function downloadPdf() {
     return;
   }
 
+  if (!(await ensureFreelanLogo())) {
+    setStatus("The local Freelan logo could not be loaded", "#fff0f0", "#b42318");
+    return;
+  }
+
   const candidate = state.candidates[state.selectedIndex];
   const { jsPDF } = window.jspdf;
-  const doc = new jsPDF({ unit: "mm", format: "a4" });
+  const doc = new jsPDF({ unit: "mm", format: "a4", orientation: "landscape" });
   const rows = state.rows;
   const uploadedFileName = fileName.textContent || "Uploaded Excel file";
   const cartonTotal = rows.reduce((sum, row) => sum + numberValue(row.quantity), 0);
@@ -676,84 +697,146 @@ function downloadPdf() {
   const utilization = suitable ? total / suitable.capacity * 100 : 0;
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
-  let y = 48;
+  const reportDate = new Date().toLocaleDateString("en-GB");
+  let y = 47;
 
   doc.setFillColor(16, 42, 67);
-  doc.rect(0, 0, pageWidth, 38, "F");
+  doc.rect(0, 0, pageWidth, 37, "F");
+  doc.addImage(freelanLogo, "PNG", 14, 7, 43, 16);
   doc.setTextColor(255, 255, 255);
-  doc.setFontSize(22);
+  doc.setFontSize(15);
   doc.setFont("helvetica", "bold");
-  doc.text("Container CBM Report", 16, 17);
-  doc.setFontSize(10);
+  doc.text("FREELAN ENTERPRISES (PVT) LTD", 64, 12);
+  doc.setFontSize(9);
   doc.setFont("helvetica", "normal");
-  doc.text("Packing summary and container recommendation", 16, 25);
-  doc.text(new Date().toLocaleDateString(), pageWidth - 16, 25, { align: "right" });
+  doc.text("No. 38, Gunawardana Mawatha, Navimana South, Matara, Sri Lanka", 64, 18);
+  doc.text("www.freelansrilanka.com", 64, 24);
+  doc.setFontSize(16);
+  doc.setFont("helvetica", "bold");
+  doc.text("Container CBM Recommendation Report", 64, 32);
+  doc.setFontSize(9);
+  doc.setFont("helvetica", "normal");
+  doc.text(`Report Date: ${reportDate}`, pageWidth - 14, 12, { align: "right" });
 
   doc.setTextColor(31, 41, 55);
   doc.setFontSize(10);
+  doc.setFont("helvetica", "bold");
   doc.text(`Sheet: ${candidate ? candidate.sheetName : "-"}`, 16, y);
+  doc.setFont("helvetica", "normal");
   doc.text(`Excel file: ${uploadedFileName}`, 16, y + 6);
   doc.text(`Header row: ${candidate ? candidate.headerRow : "-"}`, 16, y + 12);
   doc.text(`CBM source: ${candidate && candidate.cbmColumnIndex !== -1 ? "Excel calculated value" : "Dimensions and cartons"}`, 16, y + 18);
 
-  y += 30;
+  y += 13;
+  doc.setTextColor(16, 42, 67);
+  doc.setFontSize(10);
+  doc.setFont("helvetica", "bold");
+  doc.text("SHIPMENT SUMMARY", 14, y);
+  y += 4;
   const cards = [
-    { label: "TOTAL CBM", value: `${formatCbm(total)} CBM`, color: [16, 122, 112] },
-    { label: "PACKET QUANTITY", value: formatNumber(packetTotal), color: [230, 126, 34] },
-    { label: "TOTAL CARTONS", value: formatNumber(cartonTotal), color: [45, 93, 155] }
+    { label: "TOTAL CARTONS", value: formatNumber(cartonTotal) },
+    { label: "TOTAL CBM", value: `${formatCbm(total)} CBM` },
+    { label: "RECOMMENDED CONTAINER", value: suitable ? suitable.name.toUpperCase() : "NO STANDARD OPTION" },
+    { label: "PACKET QUANTITY", value: formatNumber(packetTotal) }
   ];
-  const cardWidth = (pageWidth - 32 - 8) / 3;
+  const cardWidth = (pageWidth - 28 - 12) / 4;
   cards.forEach((card, index) => {
-    const x = 16 + index * (cardWidth + 4);
-    doc.setFillColor(...card.color);
-    doc.roundedRect(x, y, cardWidth, 22, 3, 3, "F");
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(8);
+    const x = 14 + index * (cardWidth + 4);
+    doc.setFillColor(245, 248, 252);
+    doc.setDrawColor(207, 219, 230);
+    doc.roundedRect(x, y, cardWidth, 20, 2, 2, "FD");
+    doc.setTextColor(72, 96, 117);
+    doc.setFontSize(7);
     doc.setFont("helvetica", "bold");
-    doc.text(card.label, x + 5, y + 8);
-    doc.setFontSize(13);
-    doc.text(card.value, x + 5, y + 16);
+    doc.text(card.label, x + 4, y + 7);
+    doc.setTextColor(16, 42, 67);
+    doc.setFontSize(index === 2 ? 10 : 13);
+    doc.text(card.value, x + 4, y + 15);
   });
 
-  y += 32;
-  doc.setFillColor(237, 247, 245);
-  doc.roundedRect(16, y, pageWidth - 32, 42, 3, 3, "F");
+  y += 27;
+  doc.setFillColor(239, 245, 250);
+  doc.setDrawColor(180, 198, 214);
+  doc.roundedRect(14, y, pageWidth - 28, 48, 2, 2, "FD");
   doc.setTextColor(16, 42, 67);
-  doc.setFontSize(13);
-  doc.setFont("helvetica", "bold");
-  doc.text(`Recommended Container: ${suitable ? suitable.name : "No standard option"}`, 22, y + 9);
-  doc.setFontSize(10);
-  doc.setFont("helvetica", "normal");
-  if (suitable) {
-    doc.text(`Capacity: ${formatCbm(suitable.capacity)} CBM`, 22, y + 17);
-    doc.text(`Remaining: ${formatCbm(remaining)} CBM`, 85, y + 17);
-    doc.text(`Utilization: ${utilization.toFixed(1)}%`, 145, y + 17);
-  } else {
-    doc.text(`Total shipment volume: ${formatCbm(total)} CBM`, 22, y + 17);
-  }
   doc.setFontSize(9);
-  doc.text("Container capacities: 20 FT = 33 CBM | 40 FT = 67 CBM | 40 FT High Cube = 76 CBM", 22, y + 29);
-
-  y += 52;
-  y = drawPdfTableHeader(doc, y, pageWidth);
+  doc.setFont("helvetica", "bold");
+  doc.text("CONTAINER RECOMMENDATION", 20, y + 8);
+  doc.setFontSize(18);
+  doc.text(suitable ? suitable.name.toUpperCase() : "NO STANDARD OPTION", 20, y + 18);
+  if (suitable) {
+    const metrics = [
+      { label: "CONTAINER CAPACITY", value: `${formatCbm(suitable.capacity)} CBM`, x: 123 },
+      { label: "REMAINING CAPACITY", value: `${formatCbm(remaining)} CBM`, x: 181 },
+      { label: "CONTAINER UTILIZATION", value: `${utilization.toFixed(1)}%`, x: 239 }
+    ];
+    metrics.forEach(metric => {
+      doc.setTextColor(72, 96, 117);
+      doc.setFontSize(7);
+      doc.text(metric.label, metric.x, y + 9);
+      doc.setTextColor(16, 42, 67);
+      doc.setFontSize(13);
+      doc.setFont("helvetica", "bold");
+      doc.text(metric.value, metric.x, y + 18);
+    });
+    const barX = 20;
+    const barY = y + 29;
+    const barWidth = 88;
+    doc.setFillColor(215, 225, 234);
+    doc.roundedRect(barX, barY, barWidth, 7, 1.5, 1.5, "F");
+    doc.setFillColor(15, 118, 110);
+    doc.roundedRect(barX, barY, barWidth * Math.min(utilization, 100) / 100, 7, 1.5, 1.5, "F");
+    doc.setTextColor(72, 96, 117);
+    doc.setFontSize(7);
+    doc.setFont("helvetica", "normal");
+    doc.text(`${utilization.toFixed(1)}% utilized`, barX + barWidth + 4, barY + 5);
+  } else {
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "normal");
+    doc.text(`Total shipment volume: ${formatCbm(total)} CBM`, 20, y + 30);
+  }
+  doc.setTextColor(72, 96, 117);
+  doc.setFontSize(7);
+  doc.setFont("helvetica", "normal");
+  doc.text("Standard capacities: 20 FT = 33 CBM | 40 FT = 67 CBM | 40 FT High Cube = 76 CBM", 20, y + 43);
+  y += 56;
+  y = drawPdfTableHeader(doc, y);
   rows.forEach((row, index) => {
     if (y > pageHeight - 18) {
+      addPdfFooter(doc, pageWidth, pageHeight);
       doc.addPage();
-      y = 18;
-      y = drawPdfTableHeader(doc, y, pageWidth);
+      y = 16;
+      y = drawPdfTableHeader(doc, y);
     }
     if (index % 2 === 0) {
       doc.setFillColor(245, 248, 252);
       doc.rect(12, y - 5, pageWidth - 24, 7, "F");
     }
     doc.setTextColor(55, 65, 81);
-    doc.setFontSize(8);
+    doc.setFontSize(7.5);
     doc.text(String(index + 1), 16, y);
-    const description = doc.splitTextToSize(row.description || `Pack ${index + 1}`, 66)[0];
-    doc.text(description, 27, y);
-    doc.text(formatNumber(row.quantity), 98, y, { align: "right" });
-    doc.text(formatNumber(row.packetQuantity), 127, y, { align: "right" });
-    doc.text(formatCbm(row.totalCbm), 158, y, { align: "right" });
+    const columns = getPdfTableColumns();
+    const values = [
+      row.description || `Pack ${index + 1}`,
+      formatNumber(row.quantity),
+      formatNumber(row.packetsPerBox),
+      formatNumber(row.packetQuantity),
+      row.batchNo || "-",
+      formatNumber(row.length),
+      formatNumber(row.width),
+      formatNumber(row.height),
+      row.weight ? formatNumber(row.weight) : "-",
+      formatCbm(row.totalCbm)
+    ];
+    values.forEach((value, valueIndex) => {
+      const column = columns[valueIndex];
+      const text = valueIndex === 0 ? doc.splitTextToSize(value, column.width - 2)[0] : value;
+      if (column.align === "right") {
+        doc.text(text, column.x + column.width, y, { align: "right" });
+      } else {
+        doc.text(text, column.x, y);
+      }
+    });
     y += 7;
   });
 
@@ -761,14 +844,12 @@ function downloadPdf() {
   doc.line(12, y, pageWidth - 12, y);
   doc.setFont("helvetica", "bold");
   doc.setTextColor(16, 42, 67);
+  doc.setFontSize(7.5);
   doc.text("TOTAL", 27, y + 7);
-  doc.text(formatNumber(packetTotal), 127, y + 7, { align: "right" });
-  doc.text(`${formatCbm(total)} CBM`, 158, y + 7, { align: "right" });
-
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(8);
-  doc.setTextColor(107, 114, 128);
-  doc.text("Generated by Container CBM Recommendation System", 16, pageHeight - 8);
+  const columns = getPdfTableColumns();
+  doc.text(formatNumber(packetTotal), columns[2].x + columns[2].width, y + 7, { align: "right" });
+  doc.text(`${formatCbm(total)} CBM`, columns[9].x + columns[9].width, y + 7, { align: "right" });
+  addPdfFooter(doc, pageWidth, pageHeight);
   const pdfBlob = doc.output("blob");
   const downloadUrl = URL.createObjectURL(pdfBlob);
   const downloadLink = document.createElement("a");
@@ -780,18 +861,56 @@ function downloadPdf() {
   setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000);
 }
 
-function drawPdfTableHeader(doc, y, pageWidth) {
+function ensureFreelanLogo() {
+  if (!freelanLogo) return Promise.resolve(false);
+  if (freelanLogo.complete) return Promise.resolve(freelanLogo.naturalWidth > 0);
+  return new Promise(resolve => {
+    freelanLogo.addEventListener("load", () => resolve(true), { once: true });
+    freelanLogo.addEventListener("error", () => resolve(false), { once: true });
+  });
+}
+
+function getPdfTableColumns() {
+  return [
+    { label: "BOX DESCRIPTION", x: 27, width: 52, align: "left" },
+    { label: "CARTONS", x: 79, width: 17, align: "right" },
+    { label: "PKT / BOX", x: 96, width: 18, align: "right" },
+    { label: "QTY PKT", x: 114, width: 20, align: "right" },
+    { label: "BATCH NO.", x: 134, width: 25, align: "left" },
+    { label: "L", x: 159, width: 13, align: "right" },
+    { label: "W", x: 172, width: 13, align: "right" },
+    { label: "H", x: 185, width: 13, align: "right" },
+    { label: "WEIGHT", x: 198, width: 22, align: "right" },
+    { label: "CBM", x: 220, width: 24, align: "right" }
+  ];
+}
+
+function drawPdfTableHeader(doc, y) {
   doc.setFillColor(16, 42, 67);
-  doc.rect(12, y - 6, pageWidth - 24, 9, "F");
+  doc.rect(12, y - 6, 273, 9, "F");
   doc.setTextColor(255, 255, 255);
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(8);
+  doc.setFontSize(7);
   doc.text("#", 16, y);
-  doc.text("PRODUCT / ITEM", 27, y);
-  doc.text("CTNS", 98, y, { align: "right" });
-  doc.text("PACKETS", 127, y, { align: "right" });
-  doc.text("CBM", 158, y, { align: "right" });
+  getPdfTableColumns().forEach(column => {
+    if (column.align === "right") {
+      doc.text(column.label, column.x + column.width, y, { align: "right" });
+    } else {
+      doc.text(column.label, column.x, y);
+    }
+  });
   return y + 8;
+}
+
+function addPdfFooter(doc, pageWidth, pageHeight) {
+  const pageNumber = doc.getNumberOfPages();
+  doc.setDrawColor(207, 219, 230);
+  doc.line(12, pageHeight - 13, pageWidth - 12, pageHeight - 13);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(7.5);
+  doc.setTextColor(107, 114, 128);
+  doc.text("FREELAN ENTERPRISES (PVT) LTD | www.freelansrilanka.com", 14, pageHeight - 7);
+  doc.text(`Page ${pageNumber}`, pageWidth - 14, pageHeight - 7, { align: "right" });
 }
 
 function createDemoCandidate() {

@@ -139,8 +139,16 @@ tbody tr:hover { background: #f8fbfc; }
 
 .recommendation { margin: 16px 0 20px; padding: 18px; border-left: 5px solid var(--teal); border-radius: 12px; color: #164e4a; background: var(--teal-soft); line-height: 1.5; }
 .empty-result { border-left-color: #b7c3ce; color: var(--muted); background: #f7f9fb; }
-.recommendation h3 { margin: 0 0 8px; }
+.recommendation h3 { margin: 0 0 8px; font-size: 24px; }
 .recommendation p { margin: 5px 0; }
+.recommendation-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin: 14px 0 10px; }
+.recommendation-metric { min-width: 0; padding: 12px; border-radius: 9px; color: #fff; }
+.recommendation-metric span { display: block; font-size: 11px; font-weight: 800; letter-spacing: .5px; text-transform: uppercase; }
+.recommendation-metric strong { display: block; margin-top: 5px; font-size: 21px; line-height: 1.15; overflow-wrap: anywhere; }
+.recommendation-metric.total { background: #107a70; }
+.recommendation-metric.capacity { background: #2d5d9b; }
+.recommendation-metric.remaining { background: #e67e22; }
+.recommendation-metric.utilization { background: #6b4fa1; }
 .container-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; }
 .container-option { min-width: 0; padding: 18px; border: 1px solid var(--line); border-radius: 12px; background: #fff; transition: border-color .2s, transform .2s; }
 .container-option:hover { border-color: #8bc6c0; transform: translateY(-2px); }
@@ -159,6 +167,7 @@ footer { padding: 8px 20px 28px; color: var(--muted); font-size: 13px; text-alig
   .container { margin-top: -20px; }
   .card { padding: 18px; border-radius: 14px; }
   .stats, .container-grid, .dimension-fields { grid-template-columns: 1fr; }
+  .recommendation-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .detection-grid { grid-template-columns: repeat(2, 1fr); }
   .selection-controls { grid-template-columns: 1fr; }
   .selection-controls .muted { grid-column: auto; }
@@ -172,5 +181,6 @@ footer { padding: 8px 20px 28px; color: var(--muted); font-size: 13px; text-alig
 @media (max-width: 390px) {
   .topbar h1 { font-size: 25px; }
   .stat-card strong { font-size: 20px; }
+  .recommendation-metrics { grid-template-columns: 1fr; }
   th, td { padding: 12px 10px; }
 }
